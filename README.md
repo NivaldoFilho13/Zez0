@@ -7,39 +7,29 @@ cada partida.
 
 ### Snake
 
-- **`zez0_snake.py`** — IA gulosa (greedy): sempre se move em direção à
-  comida, evitando parede e o próprio corpo. Não aprende, só segue regras.
-- **`zez0_snake_qlearning.py`** — IA que aprende de verdade com Q-Learning
+- **`snake_qlearning.py`** — IA que aprende de verdade com Q-Learning
   tabular. Treina ~3.000 partidas rápido (sem tela) e depois mostra
   jogando, continuando a aprender ao vivo.
-- **`zez0_snake_qlearning_paralelo.py`** — mesma coisa, mas o treino é
-  dividido entre vários núcleos do seu processador (multiprocessing),
-  pra treinar mais rápido. Mostra na tela quanto tempo cada abordagem
-  levou, pra comparar.
 
 ```
 pip install pygame
-python zez0_snake_qlearning.py
+python snake_qlearning.py
 ```
 
 ### Campo minado
 
-- **`zez0_campo_minado.py`** — joga usando só dedução lógica 100% certa
-  (quando o número bate com as bandeiras/desconhecidos ao redor).
-- **`zez0_campo_minado_qlearning.py`** — combina a dedução lógica com
+- **`campo_minado_qlearning.py`** — combina a dedução lógica com
   Q-Learning para as jogadas incertas, aprendendo um padrão reutilizável
   a partir da vizinhança de cada célula.
-- **`zez0_campo_minado_qlearning_paralelo.py`** — mesma IA, mas com o
-  treino distribuído entre vários processos.
 
 ```
 pip install pygame
-python zez0_campo_minado_qlearning.py
+python campo_minado_qlearning.py
 ```
 
 ### Pac-Man
 
-- **`zez0_pacman.py`** — mapa fixo (sempre o mesmo labirinto, validado
+- **`pacman.py`** — mapa fixo (sempre o mesmo labirinto, validado
   como 100% conectado) com 4 power pellets. A IA usa BFS pra comer
   bolinhas evitando os fantasmas; ao comer um power pellet, os fantasmas
   ficam assustados por 10 segundos e a IA aproveita pra persegui-los e
@@ -47,7 +37,7 @@ python zez0_campo_minado_qlearning.py
 
 ```
 pip install pygame
-python zez0_pacman.py
+python pacman.py
 ```
 
 ## Reinício automático
@@ -60,8 +50,8 @@ precisar rodar o comando de novo — é só deixar rodando.
 ```
 zez0/
 ├── snake_qlearning.py
-├── zez0_campo_minado_qlearning.py
-├── zez0_pacman.py
+├── campo_minado_qlearning.py
+├── pacman.py
 └── README.md
 ```
 
