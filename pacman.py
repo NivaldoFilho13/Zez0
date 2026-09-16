@@ -1,42 +1,9 @@
-"""
-Zez0 - Pac-Man automatizado (mapa fixo + power pellets + animações)
-
-Diferenças pra versão anterior:
-    - Movimento animado: em vez de teletransportar de um quadrado pro
-      outro a cada passo, a posição na tela é interpolada suavemente
-      entre a posição anterior e a nova, ao longo do tempo do passo.
-      A lógica do jogo (decisões, colisões) continua sendo por tiles
-      inteiros — só o desenho ficou suave.
-    - Fantasmas assustados ficam 20% mais lentos: a cada passo, 20%
-      de chance de "pular" o movimento daquele fantasma (só quando
-      está assustado), fazendo ele avançar mais devagar que o normal.
-    - Bolinhas grandes (power pellets) pulsam suavemente.
-    - Fantasmas assustados piscam nos últimos 3 segundos do modo poder,
-      avisando que estão prestes a voltar ao normal.
-    - O labirinto é FIXO (sempre o mesmo, validado como 100% conectado).
-    - 4 power pellets: ao comer, fantasmas ficam assustados por 10s.
-
-Como funciona a IA:
-    - Fora do modo poder: BFS até a bolinha (normal ou power pellet)
-      mais próxima que dá pra alcançar sem passar perto de fantasma.
-    - Durante o modo poder: se algum fantasma assustado estiver
-      alcançável, o Zez0 muda de alvo e vai caçá-lo (pontos bônus).
-
-Requisitos:
-    pip install pygame
-
-Como rodar:
-    python zez0_pacman.py
-"""
-
 import math
 import pygame
 import random
 import sys
 from collections import deque
 
-# ----------------- Mapa fixo -----------------
-# Gerado uma vez com semente fixa e validado (todas as células conectadas).
 MAZE = [
     "#########################",
     "#     #         #       #",
@@ -75,12 +42,11 @@ LARGURA = COLUNAS * TAMANHO_BLOCO
 ALTURA = LINHAS * TAMANHO_BLOCO + BARRA_STATUS
 
 CHANCE_FANTASMA_PERSEGUIR = 0.65
-CHANCE_FANTASMA_ASSUSTADO_PULAR = 0.20  # 20% mais lento quando assustado
-DURACAO_MODO_PODER_MS = 10_000  # 10 segundos
-INTERVALO_PASSO_MS = 200  # tempo (ms) entre cada passo lógico do jogo
-RENDER_FPS = 60  # taxa de quadros do desenho (bem maior que a lógica, pra animação suave)
-PISCAR_ULTIMOS_MS = 3_000  # fantasma assustado pisca nos últimos 3s do modo poder
-
+CHANCE_FANTASMA_ASSUSTADO_PULAR = 0.20  
+DURACAO_MODO_PODER_MS = 8_000 
+INTERVALO_PASSO_MS = 200  
+RENDER_FPS = 60 
+PISCAR_ULTIMOS_MS = 3_000 
 PRETO = (10, 10, 30)
 AZUL_PAREDE = (30, 30, 140)
 AMARELO = (240, 220, 0)
@@ -140,7 +106,6 @@ def interpolar_posicao(anterior, atual, t):
     return (ar + (br - ar) * t, ac + (bc - ac) * t)
 
 
-# ----------------- Estado do jogo -----------------
 class JogoPacman:
     def __init__(self):
         self.reset()
@@ -176,9 +141,6 @@ class JogoPacman:
                 f["assustado"] = False
 
     def escolher_alvo_pacman(self):
-        """Decide pra onde o Zez0 deve ir: caçar fantasma assustado (se o
-        modo poder estiver ativo) ou comer a bolinha/pellet mais próxima
-        e segura."""
         if self.em_modo_poder():
             assustados = [f["pos"] for f in self.fantasmas if f["assustado"]]
             assustados.sort(key=lambda p: bfs_distancia(self.grade, self.pacman, p))
