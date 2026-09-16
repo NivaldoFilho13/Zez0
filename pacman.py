@@ -1,8 +1,42 @@
+"""
+Zez0 - Pac-Man automatizado (mapa fixo + power pellets + animações)
+
+Diferenças pra versão anterior:
+    - Movimento animado: em vez de teletransportar de um quadrado pro
+      outro a cada passo, a posição na tela é interpolada suavemente
+      entre a posição anterior e a nova, ao longo do tempo do passo.
+      A lógica do jogo (decisões, colisões) continua sendo por tiles
+      inteiros — só o desenho ficou suave.
+    - Fantasmas assustados ficam 20% mais lentos: a cada passo, 20%
+      de chance de "pular" o movimento daquele fantasma (só quando
+      está assustado), fazendo ele avançar mais devagar que o normal.
+    - Bolinhas grandes (power pellets) pulsam suavemente.
+    - Fantasmas assustados piscam nos últimos 3 segundos do modo poder,
+      avisando que estão prestes a voltar ao normal.
+    - O labirinto é FIXO (sempre o mesmo, validado como 100% conectado).
+    - 4 power pellets: ao comer, fantasmas ficam assustados por 10s.
+
+Como funciona a IA:
+    - Fora do modo poder: BFS até a bolinha (normal ou power pellet)
+      mais próxima que dá pra alcançar sem passar perto de fantasma.
+    - Durante o modo poder: se algum fantasma assustado estiver
+      alcançável, o Zez0 muda de alvo e vai caçá-lo (pontos bônus).
+
+Requisitos:
+    pip install pygame
+
+Como rodar:
+    python zez0_pacman.py
+"""
+
+import math
 import pygame
 import random
 import sys
 from collections import deque
 
+# ----------------- Mapa fixo -----------------
+# Gerado uma vez com semente fixa e validado (todas as células conectadas).
 MAZE = [
     "#########################",
     "#     #         #       #",
@@ -34,14 +68,18 @@ FANTASMAS_INICIO = [(19, 13), (19, 12), (19, 14)]
 LINHAS = len(MAZE)
 COLUNAS = len(MAZE[0])
 
+# ----------------- Configurações -----------------
 TAMANHO_BLOCO = 28
 BARRA_STATUS = 44
 LARGURA = COLUNAS * TAMANHO_BLOCO
 ALTURA = LINHAS * TAMANHO_BLOCO + BARRA_STATUS
 
 CHANCE_FANTASMA_PERSEGUIR = 0.65
-DURACAO_MODO_PODER_MS = 10_000
-FPS = 6
+CHANCE_FANTASMA_ASSUSTADO_PULAR = 0.20  # 20% mais lento quando assustado
+DURACAO_MODO_PODER_MS = 10_000  # 10 segundos
+INTERVALO_PASSO_MS = 200  # tempo (ms) entre cada passo lógico do jogo
+RENDER_FPS = 60  # taxa de quadros do desenho (bem maior que a lógica, pra animação suave)
+PISCAR_ULTIMOS_MS = 3_000  # fantasma assustado pisca nos últimos 3s do modo poder
 
 PRETO = (10, 10, 30)
 AZUL_PAREDE = (30, 30, 140)
@@ -95,6 +133,14 @@ def bfs_distancia(grade, origem, destino):
     return len(caminho) - 1 if caminho else float("inf")
 
 
+def interpolar_posicao(anterior, atual, t):
+    """Mistura suavemente entre a posição anterior e a atual (t de 0 a 1)."""
+    ar, ac = anterior
+    br, bc = atual
+    return (ar + (br - ar) * t, ac + (bc - ac) * t)
+
+
+# ----------------- Estado do jogo -----------------
 class JogoPacman:
     def __init__(self):
         self.reset()
@@ -102,21 +148,24 @@ class JogoPacman:
     def reset(self):
         self.grade = carregar_grade()
         abertas = [
-            (r, c)
-            for r in range(LINHAS)
-            for c in range(COLUNAS)
+            (r, c) for r in range(LINHAS) for c in range(COLUNAS)
             if self.grade[r][c] != "#"
         ]
 
         self.pacman = PACMAN_INICIO
+        self.pacman_anterior = PACMAN_INICIO
         self.pellets = set(PELLETS_INICIAIS)
         self.dots = set(abertas) - {self.pacman} - set(FANTASMAS_INICIO) - self.pellets
 
-        self.fantasmas = [{"pos": pos, "assustado": False} for pos in FANTASMAS_INICIO]
+        self.fantasmas = [
+            {"pos": pos, "pos_anterior": pos, "assustado": False}
+            for pos in FANTASMAS_INICIO
+        ]
 
         self.pontuacao = 0
         self.game_over = False
-        self.power_fim_ms = 0
+        self.power_fim_ms = 0  # timestamp (pygame ticks) em que o modo poder acaba
+        self.tempo_ultimo_passo_ms = pygame.time.get_ticks()
 
     def em_modo_poder(self):
         return pygame.time.get_ticks() < self.power_fim_ms
@@ -127,7 +176,9 @@ class JogoPacman:
                 f["assustado"] = False
 
     def escolher_alvo_pacman(self):
-
+        """Decide pra onde o Zez0 deve ir: caçar fantasma assustado (se o
+        modo poder estiver ativo) ou comer a bolinha/pellet mais próxima
+        e segura."""
         if self.em_modo_poder():
             assustados = [f["pos"] for f in self.fantasmas if f["assustado"]]
             assustados.sort(key=lambda p: bfs_distancia(self.grade, self.pacman, p))
@@ -144,14 +195,10 @@ class JogoPacman:
                     proibidas.add(viz)
 
         itens = self.dots | self.pellets
-        candidatos = sorted(
-            itens, key=lambda d: bfs_distancia(self.grade, self.pacman, d)
-        )
+        candidatos = sorted(itens, key=lambda d: bfs_distancia(self.grade, self.pacman, d))
 
         for item in candidatos[:15]:
-            caminho = bfs_caminho(
-                self.grade, self.pacman, item, celulas_proibidas=proibidas
-            )
+            caminho = bfs_caminho(self.grade, self.pacman, item, celulas_proibidas=proibidas)
             if caminho:
                 return caminho
 
@@ -163,6 +210,8 @@ class JogoPacman:
         return None
 
     def passo_pacman(self):
+        self.pacman_anterior = self.pacman
+
         caminho = self.escolher_alvo_pacman()
         if caminho and len(caminho) > 1:
             self.pacman = caminho[1]
@@ -182,14 +231,19 @@ class JogoPacman:
         self.atualizar_modo_poder()
 
         for f in self.fantasmas:
+            f["pos_anterior"] = f["pos"]
+
             if f["assustado"]:
+                # 20% de chance de "pular" o passo -> fica mais lento
+                if random.random() < CHANCE_FANTASMA_ASSUSTADO_PULAR:
+                    continue
+
+                # Foge: escolhe o vizinho que fica mais longe do Zez0
                 opcoes = list(vizinhos_livres(self.grade, f["pos"]))
                 if opcoes:
                     f["pos"] = max(
                         opcoes,
-                        key=lambda p: (
-                            abs(p[0] - self.pacman[0]) + abs(p[1] - self.pacman[1])
-                        ),
+                        key=lambda p: abs(p[0] - self.pacman[0]) + abs(p[1] - self.pacman[1]),
                     )
                 continue
 
@@ -208,49 +262,57 @@ class JogoPacman:
                 if f["assustado"]:
                     self.pontuacao += 50
                     f["pos"] = FANTASMAS_INICIO[i]
+                    f["pos_anterior"] = FANTASMAS_INICIO[i]
                     f["assustado"] = False
                 else:
                     self.game_over = True
 
 
-def desenhar(jogo, partidas, melhor_pontuacao):
+def desenhar(jogo, partidas, melhor_pontuacao, t):
+    agora = pygame.time.get_ticks()
     tela.fill(PRETO)
 
     for r in range(LINHAS):
         for c in range(COLUNAS):
             x, y = c * TAMANHO_BLOCO, r * TAMANHO_BLOCO + BARRA_STATUS
             if jogo.grade[r][c] == "#":
-                pygame.draw.rect(
-                    tela, AZUL_PAREDE, (x, y, TAMANHO_BLOCO, TAMANHO_BLOCO)
-                )
+                pygame.draw.rect(tela, AZUL_PAREDE, (x, y, TAMANHO_BLOCO, TAMANHO_BLOCO))
 
-    for r, c in jogo.dots:
+    for (r, c) in jogo.dots:
         x, y = c * TAMANHO_BLOCO, r * TAMANHO_BLOCO + BARRA_STATUS
         centro = (x + TAMANHO_BLOCO // 2, y + TAMANHO_BLOCO // 2)
         pygame.draw.circle(tela, BRANCO, centro, 3)
 
-    for r, c in jogo.pellets:
+    # Power pellets com uma pulsação suave (respirando)
+    pulso = 2 * math.sin(agora / 150.0)
+    for (r, c) in jogo.pellets:
         x, y = c * TAMANHO_BLOCO, r * TAMANHO_BLOCO + BARRA_STATUS
         centro = (x + TAMANHO_BLOCO // 2, y + TAMANHO_BLOCO // 2)
-        pygame.draw.circle(tela, BRANCO, centro, 8)
+        pygame.draw.circle(tela, BRANCO, centro, 8 + pulso)
 
-    pr, pc = jogo.pacman
+    # Zez0 (Pac-Man): posição interpolada entre o tile anterior e o atual
+    pr, pc = interpolar_posicao(jogo.pacman_anterior, jogo.pacman, t)
     x, y = pc * TAMANHO_BLOCO, pr * TAMANHO_BLOCO + BARRA_STATUS
     centro = (x + TAMANHO_BLOCO // 2, y + TAMANHO_BLOCO // 2)
     pygame.draw.circle(tela, AMARELO, centro, TAMANHO_BLOCO // 2 - 3)
 
     for i, f in enumerate(jogo.fantasmas):
-        fr, fc = f["pos"]
+        fr, fc = interpolar_posicao(f["pos_anterior"], f["pos"], t)
         x, y = fc * TAMANHO_BLOCO, fr * TAMANHO_BLOCO + BARRA_STATUS
         centro = (x + TAMANHO_BLOCO // 2, y + TAMANHO_BLOCO // 2)
-        cor = (
-            AZUL_ASSUSTADO
-            if f["assustado"]
-            else CORES_FANTASMAS[i % len(CORES_FANTASMAS)]
-        )
+
+        if f["assustado"]:
+            tempo_restante = jogo.power_fim_ms - agora
+            if tempo_restante < PISCAR_ULTIMOS_MS and (agora // 200) % 2 == 0:
+                cor = BRANCO  # pisca avisando que tá acabando
+            else:
+                cor = AZUL_ASSUSTADO
+        else:
+            cor = CORES_FANTASMAS[i % len(CORES_FANTASMAS)]
+
         pygame.draw.circle(tela, cor, centro, TAMANHO_BLOCO // 2 - 3)
 
-    segundos_poder = max(0, (jogo.power_fim_ms - pygame.time.get_ticks()) // 1000 + 1)
+    segundos_poder = max(0, (jogo.power_fim_ms - agora) // 1000 + 1)
     extra = f" | MODO PODER: {segundos_poder}s" if jogo.em_modo_poder() else ""
     status = f"Zez0 | Partidas: {partidas} | Pontuação: {jogo.pontuacao} | Melhor: {melhor_pontuacao}{extra}"
     tela.blit(fonte.render(status, True, BRANCO), (10, 8))
@@ -267,24 +329,31 @@ def main():
             if evento.type == pygame.QUIT:
                 rodando = False
 
+        agora = pygame.time.get_ticks()
+
         if jogo.game_over or (not jogo.dots and not jogo.pellets):
             partidas += 1
             melhor_pontuacao = max(melhor_pontuacao, jogo.pontuacao)
-            desenhar(jogo, partidas, melhor_pontuacao)
+            desenhar(jogo, partidas, melhor_pontuacao, 1.0)
             pygame.display.flip()
             pygame.time.delay(900)
             jogo = JogoPacman()
             continue
 
-        jogo.passo_pacman()
-        jogo.verificar_colisao()
-        if not jogo.game_over:
-            jogo.passo_fantasmas()
+        # Passo lógico: só avança de tempos em tempos (não a cada quadro),
+        # é isso que separa a lógica (por tile) da animação (suave).
+        if agora - jogo.tempo_ultimo_passo_ms >= INTERVALO_PASSO_MS:
+            jogo.passo_pacman()
             jogo.verificar_colisao()
+            if not jogo.game_over:
+                jogo.passo_fantasmas()
+                jogo.verificar_colisao()
+            jogo.tempo_ultimo_passo_ms = agora
 
-        desenhar(jogo, partidas, melhor_pontuacao)
+        t = min(1.0, (agora - jogo.tempo_ultimo_passo_ms) / INTERVALO_PASSO_MS)
+        desenhar(jogo, partidas, melhor_pontuacao, t)
         pygame.display.flip()
-        relogio.tick(FPS)
+        relogio.tick(RENDER_FPS)
 
     pygame.quit()
     sys.exit()
