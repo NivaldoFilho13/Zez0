@@ -5,7 +5,7 @@ sozinho a cada partida.
 
 ## Jogos em Python (pygame)
 
-### 🐍 Snake
+### Snake
 
 - **`snake.py`** — IA gulosa (greedy): sempre se move em direção à
   comida, evitando parede e o próprio corpo. Não aprende, só segue regras.
@@ -15,7 +15,7 @@ pip install pygame
 python snake.py
 ```
 
-### 💣 Campo minado
+### Campo minado
 
 - **`campo_minado.py`** — joga usando só dedução lógica 100% certa.
 
@@ -24,7 +24,7 @@ pip install pygame
 python campo_minado.py
 ```
 
-### 👻 Pac-Man
+### Pac-Man
 
 - **`pacman.py`** — mapa fixo com 4 power pellets. Usa BFS pra
   comer bolinhas evitando fantasmas; ao comer um power pellet, os
