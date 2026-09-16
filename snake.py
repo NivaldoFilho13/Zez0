@@ -15,7 +15,6 @@ pygame.display.set_caption("Snake - Q-Learning")
 
 RELOGIO = pygame.time.Clock()
 
-# Cores
 PRETO = (15, 15, 15)
 VERDE = (0, 200, 0)
 VERDE_CLARO = (100, 255, 100)
@@ -55,10 +54,10 @@ def obter_q(estado):
 
 
 DIRECOES = [
-    (0, -TAMANHO),   # cima
-    (TAMANHO, 0),    # direita
-    (0, TAMANHO),    # baixo
-    (-TAMANHO, 0)    # esquerda
+    (0, -TAMANHO),   
+    (TAMANHO, 0),
+    (0, TAMANHO),    
+    (-TAMANHO, 0)    
 ]
 
 
@@ -120,18 +119,15 @@ class Snake:
         cabeca_x, cabeca_y = self.cobra[0]
         comida_x, comida_y = self.comida
 
-        # Direção atual
         cima = int(self.direcao == 0)
         direita = int(self.direcao == 1)
         baixo = int(self.direcao == 2)
         esquerda = int(self.direcao == 3)
 
-        # Perigos
         esquerda_perigo = self.perigo((self.direcao - 1) % 4)
         frente_perigo = self.perigo(self.direcao)
         direita_perigo = self.perigo((self.direcao + 1) % 4)
 
-        # Localização da comida
         comida_esquerda = int(comida_x < cabeca_x)
         comida_direita = int(comida_x > cabeca_x)
 
@@ -167,7 +163,6 @@ class Snake:
         elif acao == 2:
             self.direcao = (self.direcao + 1) % 4
 
-        # Nova cabeça
         cabeca = self.cobra[0]
 
         nova_cabeca = (
@@ -183,8 +178,7 @@ class Snake:
             nova_cabeca in self.cobra
         ):
             return -10, True
-
-        # Distância antes de andar
+            
         distancia_anterior = abs(
             cabeca[0] - self.comida[0]
         ) + abs(
@@ -210,13 +204,11 @@ class Snake:
                 nova_cabeca[1] - self.comida[1]
             )
 
-            # Recompensa por aproximar-se da comida
             if distancia_nova < distancia_anterior:
                 recompensa = 1
             else:
                 recompensa = -1
 
-        # Evita ficar andando indefinidamente
         if self.passos > self.max_passos + len(self.cobra) * 10:
             return -10, True
 
@@ -229,11 +221,9 @@ def escolher_acao(estado):
 
     valores = obter_q(estado)
 
-    # Exploração
     if random.random() < EPSILON:
         return random.randint(0, 2)
 
-    # Exploração da melhor ação
     maior = max(valores)
 
     melhores = [
@@ -269,7 +259,6 @@ def treinar(episodios=10000):
             q_atual = obter_q(estado)
             q_futuro = obter_q(novo_estado)
 
-            # Fórmula do Q-Learning
             q_atual[acao] += ALPHA * (
                 recompensa +
                 GAMMA * max(q_futuro) -
@@ -281,7 +270,6 @@ def treinar(episodios=10000):
             if morreu:
                 break
 
-        # Reduz exploração
         if EPSILON > EPSILON_MIN:
             EPSILON *= EPSILON_DECAY
 
@@ -297,7 +285,6 @@ def treinar(episodios=10000):
                 f"Epsilon: {EPSILON:.3f}"
             )
 
-        # Salva a inteligência
         if episodio % 500 == 0:
 
             with open(ARQUIVO_QTABLE, "wb") as arquivo:
@@ -329,14 +316,12 @@ def jogar():
 
         valores = obter_q(estado)
 
-        # Durante o jogo a IA não precisa explorar
         acao = valores.index(max(valores))
 
         recompensa, morreu = cobra.passo(acao)
 
         TELA.fill(PRETO)
 
-        # Grade
         for x in range(0, LARGURA, TAMANHO):
             pygame.draw.line(
                 TELA,
@@ -353,7 +338,6 @@ def jogar():
                 (LARGURA, y)
             )
 
-        # Cobra
         for i, parte in enumerate(cobra.cobra):
 
             cor = (
@@ -373,7 +357,6 @@ def jogar():
                 )
             )
 
-        # Comida
         pygame.draw.rect(
             TELA,
             VERMELHO,
@@ -385,7 +368,6 @@ def jogar():
             )
         )
 
-        # Pontuação
         texto = fonte.render(
             f"Pontos: {cobra.pontos}",
             True,
