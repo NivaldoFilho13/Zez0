@@ -1,17 +1,16 @@
-local ENDERECO_X = 0x02557C
-local ENDERECO_Y = 0x02557E
+local ENDERECO_X = 0x036E48
+local ENDERECO_X_ALT = 0x036E4C
+local ENDERECO_Y = 0x036E4A
+local ENDERECO_Y_ALT = 0x036E4E
 local ENDERECO_MAPA = 0x036E0E
-local ENDERECO_BATALHA = nil 
+local ENDERECO_BATALHA = nil  
 local DOMINIO = "EWRAM"
 
 local FRAMES_POR_PASSO = 20
 local FRAMES_PAUSA = 2
-local LIMITE_CUTSCENE = 2  
-local CICLOS_AQUECIMENTO_INICIO = 15  
-
+local CICLOS_AQUECIMENTO_INICIO = 15 
 
 local ARQUIVO_MEMORIA = "zez0_memoria.txt"
-
 
 local function dividir(texto, separador)
     local partes = {}
@@ -29,12 +28,18 @@ local function registrar_no_arquivo(linha)
     end
 end
 
-
 local ultimo_x_valido, ultimo_y_valido, ultimo_mapa_valido = 0, 0, 0
 
 local function posicao_atual()
     local ok_x, x = pcall(memory.read_u16_le, ENDERECO_X, DOMINIO)
+    if not ok_x or x == nil then
+        ok_x, x = pcall(memory.read_u16_le, ENDERECO_X_ALT, DOMINIO)
+    end
+
     local ok_y, y = pcall(memory.read_u16_le, ENDERECO_Y, DOMINIO)
+    if not ok_y or y == nil then
+        ok_y, y = pcall(memory.read_u16_le, ENDERECO_Y_ALT, DOMINIO)
+    end
 
     if ok_x and x ~= nil then
         ultimo_x_valido = x
@@ -57,6 +62,19 @@ local function mapa_atual()
         ultimo_mapa_valido = m
     end
     return ultimo_mapa_valido
+end
+
+local ultimo_batalha_valido = 0
+
+local function em_batalha()
+    if ENDERECO_BATALHA == nil then
+        return false
+    end
+    local ok, v = pcall(memory.read_u8, ENDERECO_BATALHA, DOMINIO)
+    if ok and v ~= nil then
+        ultimo_batalha_valido = v
+    end
+    return ultimo_batalha_valido ~= 0
 end
 
 local function pressionar(direcao, frames)
@@ -88,12 +106,11 @@ local function embaralhar(lista)
     end
 end
 
-
 local pontuacao_total = 0
 local PONTOS_POR_TILE_NOVO = 1
 local PONTOS_POR_INTERACAO_NOVA = 5
 local ultimo_marco_avisado = 0
-local INTERVALO_MARCO = 50 
+local INTERVALO_MARCO = 50  
 
 local function somar_pontos(quantidade)
     pontuacao_total = pontuacao_total + quantidade
@@ -102,9 +119,10 @@ local function somar_pontos(quantidade)
         console.log(string.format("Zez0: %d pontos de progresso até agora!", pontuacao_total))
     end
 end
-local visitados = {}   
-local paredes = {}    
+local visitados = {} 
+local paredes = {}     
 local mapa_carregado = nil 
+local total_tiles_descobertos = 0 
 
 local function marcar_visitado(x, y)
     local k = chave(x, y)
@@ -112,6 +130,7 @@ local function marcar_visitado(x, y)
         visitados[k] = true
         registrar_no_arquivo(string.format("VISITADO|%d|%d|%d", mapa_carregado, x, y))
         somar_pontos(PONTOS_POR_TILE_NOVO)
+        total_tiles_descobertos = total_tiles_descobertos + 1
     end
 end
 
@@ -122,7 +141,6 @@ local function marcar_parede(x, y, direcao)
         registrar_no_arquivo(string.format("PAREDE|%d|%d|%d|%s", mapa_carregado, x, y, direcao))
     end
 end
-
 
 local function desmarcar_parede(x, y, direcao)
     local k = chave(x, y) .. "|" .. direcao
@@ -139,11 +157,11 @@ local function eh_parede_conhecida(x, y, direcao)
     return paredes[chave(x, y) .. "|" .. direcao] == true
 end
 
-
-local pontos_interacao = {}  -
+local pontos_interacao = {} 
 local saidas = {} 
 local saidas_registradas = {} 
-local mapas_conhecidos = {}  
+local mapas_conhecidos = {} 
+
 local function carregar_memoria_do_mapa(mapa_id)
     visitados = {}
     paredes = {}
@@ -200,7 +218,6 @@ local function carregar_memoria_do_mapa(mapa_id)
                     total_saidas = total_saidas + 1
                 end
             end
-            
         end
         arq:close()
 
@@ -219,7 +236,6 @@ local function carregar_memoria_do_mapa(mapa_id)
     end
 end
 
-
 local function registrar_saida(x, y, direcao_nome, mapa_origem)
     local destino = mapa_atual()
     local k = chave(x, y) .. "|" .. direcao_nome
@@ -230,10 +246,6 @@ local function registrar_saida(x, y, direcao_nome, mapa_origem)
         console.log(string.format("Zez0: descobri uma saída em (%d,%d) [%s] -> mapa %d! Registrada.", x, y, direcao_nome, destino))
     end
 end
-
-local ultima_posicao = nil
-local contador_sem_progresso = 0
-
 
 local function tentar_mover(direcao_nome, dx, dy, x, y, eh_caminho_conhecido)
     pressionar(direcao_nome, FRAMES_POR_PASSO)
@@ -247,10 +259,9 @@ local function tentar_mover(direcao_nome, dx, dy, x, y, eh_caminho_conhecido)
     local esperado_x, esperado_y = x + dx, y + dy
 
     if novo_x == esperado_x and novo_y == esperado_y then
-        desmarcar_parede(x, y, direcao_nome)  
+        desmarcar_parede(x, y, direcao_nome) 
         return true, novo_x, novo_y, false
     elseif novo_x == x and novo_y == y then
-        
         for i = 1, 3 do
             pressionar("A", FRAMES_POR_PASSO)
         end
@@ -266,7 +277,6 @@ local function tentar_mover(direcao_nome, dx, dy, x, y, eh_caminho_conhecido)
         end
 
         if eh_caminho_conhecido then
-            
             for tentativa = 1, 2 do
                 for i = 1, FRAMES_POR_PASSO do
                     emu.frameadvance()
@@ -292,7 +302,8 @@ local function tentar_mover(direcao_nome, dx, dy, x, y, eh_caminho_conhecido)
     end
 end
 
-
+local VEZES_A_CUTSCENE = 15
+local VEZES_B_CUTSCENE = 25
 local MAX_CICLOS_CUTSCENE = 5
 
 local function lidar_com_cutscene(x, y)
@@ -300,8 +311,7 @@ local function lidar_com_cutscene(x, y)
     registrar_no_arquivo(string.format("TRANSICAO|%d|%d|%d", mapa_carregado, x, y))
 
     for ciclo = 1, MAX_CICLOS_CUTSCENE do
-        
-        for i = 1, 10 do
+        for i = 1, VEZES_A_CUTSCENE do
             pressionar("A", FRAMES_POR_PASSO)
             local nx, ny = posicao_atual()
             if nx ~= x or ny ~= y then
@@ -310,8 +320,7 @@ local function lidar_com_cutscene(x, y)
             end
         end
 
-        
-        for i = 1, 5 do
+        for i = 1, VEZES_B_CUTSCENE do
             pressionar("B", FRAMES_POR_PASSO)
             local nx, ny = posicao_atual()
             if nx ~= x or ny ~= y then
@@ -320,7 +329,6 @@ local function lidar_com_cutscene(x, y)
             end
         end
 
-        
         local qualquer = DIRECOES[math.random(1, 4)]
         pressionar(qualquer.nome, FRAMES_POR_PASSO)
         local nx, ny = posicao_atual()
@@ -332,13 +340,11 @@ local function lidar_com_cutscene(x, y)
         console.log(string.format("Zez0: ciclo %d/%d sem sucesso, tentando de novo...", ciclo, MAX_CICLOS_CUTSCENE))
     end
 
-    
     console.log("Zez0: tentei bastante (A/B várias vezes) e ainda travado. Marcando esse ponto como sem saída conhecida.")
     for _, d in ipairs(DIRECOES) do
         marcar_parede(x, y, d.nome)
     end
 end
-
 
 local function encontrar_caminho_para_fronteira(x0, y0)
     local fila = {{x = x0, y = y0}}
@@ -355,7 +361,6 @@ local function encontrar_caminho_para_fronteira(x0, y0)
                 local nx, ny = atual.x + d.dx, atual.y + d.dy
 
                 if not visitados[chave(nx, ny)] then
-                   
                     local caminho = {}
                     local passo = atual
                     while passo.x ~= x0 or passo.y ~= y0 do
@@ -381,7 +386,6 @@ local function direcao_por_nome(nome)
         if d.nome == nome then return d end
     end
 end
-
 
 local function encontrar_caminho_para_ponto(x0, y0, alvo_x, alvo_y)
     if x0 == alvo_x and y0 == alvo_y then return {} end
@@ -420,7 +424,6 @@ local function encontrar_caminho_para_ponto(x0, y0, alvo_x, alvo_y)
     return nil
 end
 
-
 local function encontrar_melhor_saida(x0, y0)
     for _, s in ipairs(saidas) do
         if not mapas_conhecidos[s.destino] then
@@ -441,7 +444,6 @@ local function encontrar_melhor_saida(x0, y0)
     return nil
 end
 
-
 local function aguardar_inicio_do_jogo()
     console.log("Zez0: tentando passar da tela de título / início do jogo...")
     for ciclo = 1, CICLOS_AQUECIMENTO_INICIO do
@@ -450,53 +452,63 @@ local function aguardar_inicio_do_jogo()
     console.log("Zez0: aquecimento concluído, seguindo para exploração.")
 end
 
+local VELOCIDADE_EMULACAO = 400  
+
+local function acelerar_emulacao()
+    local ok = pcall(function() client.speedmode(VELOCIDADE_EMULACAO) end)
+    if ok then
+        console.log(string.format("Zez0: velocidade de emulação em %d%% pra explorar mais rápido.", VELOCIDADE_EMULACAO))
+        event.onexit(function() pcall(function() client.speedmode(100) end) end)
+    end
+end
+
+local function lidar_com_batalha()
+    pressionar("A", FRAMES_POR_PASSO)
+end
 
 console.log("Zez0 - Passo 4 v3: exploração com memória por mapa iniciada.")
+acelerar_emulacao()
 aguardar_inicio_do_jogo()
 carregar_memoria_do_mapa(mapa_atual())
 
+local estava_em_batalha = false
+local ultimo_relatorio_tiles = 0
+local INTERVALO_RELATORIO = 50 
+
 while true do
+    if em_batalha() then
+        if not estava_em_batalha then
+            console.log("Zez0: entrei em batalha!")
+            estava_em_batalha = true
+        end
+        lidar_com_batalha()
+    else
+    if estava_em_batalha then
+        console.log("Zez0: batalha terminou, voltando a explorar.")
+        estava_em_batalha = false
+    end
+
     local mapa_id_agora = mapa_atual()
     if mapa_id_agora ~= mapa_carregado then
         console.log(string.format("Zez0: mudei do mapa %d pro mapa %d!", mapa_carregado, mapa_id_agora))
         carregar_memoria_do_mapa(mapa_id_agora)
-        ultima_posicao = nil
-        contador_sem_progresso = 0
     end
 
     local x, y = posicao_atual()
     marcar_visitado(x, y)
 
-    if ultima_posicao and ultima_posicao.x == x and ultima_posicao.y == y then
-        contador_sem_progresso = contador_sem_progresso + 1
-    else
-        contador_sem_progresso = 0
+    if total_tiles_descobertos - ultimo_relatorio_tiles >= INTERVALO_RELATORIO then
+        ultimo_relatorio_tiles = total_tiles_descobertos
+        local total_mapas = 0
+        for _ in pairs(mapas_conhecidos) do
+            total_mapas = total_mapas + 1
+        end
+        console.log(string.format(
+            "Zez0: progresso -> %d tiles descobertos no total | %d mapas conhecidos | %d pontos",
+            total_tiles_descobertos, total_mapas, pontuacao_total
+        ))
     end
-    ultima_posicao = {x = x, y = y}
 
-    if contador_sem_progresso >= LIMITE_CUTSCENE then
-        
-        local direcoes_teste = {}
-        for _, d in ipairs(DIRECOES) do
-            table.insert(direcoes_teste, d)
-        end
-        embaralhar(direcoes_teste)
-
-        local moveu_no_teste = false
-        for _, d in ipairs(direcoes_teste) do
-            local sucesso = tentar_mover(d.nome, d.dx, d.dy, x, y, true)
-            if sucesso then
-                moveu_no_teste = true
-                break
-            end
-        end
-
-        if not moveu_no_teste then
-            lidar_com_cutscene(x, y)
-        end
-        contador_sem_progresso = 0
-    else
-        
     local candidatos = {}
     for _, d in ipairs(DIRECOES) do
         if not eh_parede_conhecida(x, y, d.nome) then
@@ -547,7 +559,6 @@ while true do
             end
             moveu = true
         else
-
             local caminho_saida, direcao_saida, eh_mapa_novo = encontrar_melhor_saida(x, y)
 
             if caminho_saida then
@@ -567,7 +578,24 @@ while true do
                 local d = direcao_por_nome(direcao_saida)
                 tentar_mover(d.nome, d.dx, d.dy, px, py, true)
             else
-                console.log("Zez0: explorei tudo que consegui alcançar e ainda não achei nenhuma saída daqui.")
+                local direcoes_teste = {}
+                for _, d in ipairs(DIRECOES) do
+                    table.insert(direcoes_teste, d)
+                end
+                embaralhar(direcoes_teste)
+
+                local moveu_no_teste = false
+                for _, d in ipairs(direcoes_teste) do
+                    local sucesso = tentar_mover(d.nome, d.dx, d.dy, x, y, true)
+                    if sucesso then
+                        moveu_no_teste = true
+                        break
+                    end
+                end
+
+                if not moveu_no_teste then
+                    lidar_com_cutscene(x, y)
+                end
             end
         end
     end
